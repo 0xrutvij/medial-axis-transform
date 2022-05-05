@@ -1,13 +1,15 @@
 from typing import List
 import numpy as np
-from collections import defaultdict, deque
+
 
 # https://stackoverflow.com/a/65105672
+
 def compute_triangle_circumcenters(xy_pts: np.ndarray, tri_arr: np.ndarray) -> np.ndarray:
     """
     Compute the centers of the circumscribing circle of each triangle in a triangulation.
     :param np.array xy_pts : points array of shape (n, 2)
-    :param np.array tri_arr : triangles array of shape (m, 3), each row is a triple of indices in the xy_pts array
+    :param np.array tri_arr : triangles array of shape (m, 3), each row is a triple of indices in
+        the xy_pts array
 
     :return: circumcenter points array of shape (m, 2)
     """
@@ -25,10 +27,11 @@ def compute_triangle_circumcenters(xy_pts: np.ndarray, tri_arr: np.ndarray) -> n
     c = 2 * (tri_pts[:, 2, 0] - tri_pts[:, 0, 0])
     d = 2 * (tri_pts[:, 2, 1] - tri_pts[:, 0, 1])
 
-    v1 = (tri_pts[:, 1, 0] ** 2 + tri_pts[:, 1, 1] ** 2) - (tri_pts[:, 0, 0] ** 2 + tri_pts[:, 0, 1] ** 2)
-    v2 = (tri_pts[:, 2, 0] ** 2 + tri_pts[:, 2, 1] ** 2) - (tri_pts[:, 0, 0] ** 2 + tri_pts[:, 0, 1] ** 2)
+    v1 = ((tri_pts[:, 1, 0] ** 2 + tri_pts[:, 1, 1] ** 2) -
+          (tri_pts[:, 0, 0] ** 2 + tri_pts[:, 0, 1] ** 2))
+    v2 = ((tri_pts[:, 2, 0] ** 2 + tri_pts[:, 2, 1] ** 2) -
+          (tri_pts[:, 0, 0] ** 2 + tri_pts[:, 0, 1] ** 2))
 
-    # solve 2x2 system (see https://en.wikipedia.org/wiki/Invertible_matrix#Inversion_of_2_%C3%97_2_matrices)
     det = (a * d - b * c)
     detx = (v1 * d - v2 * b)
     dety = (a * v2 - c * v1)
@@ -50,7 +53,7 @@ def are_ccw(p1, p2, p3):
     return diff < 0
 
 
-def in_circle(d1: np.ndarray, d2: np.ndarray, v1: np.ndarray, v2: np.ndarray) -> int:
+def in_circle(d1: np.ndarray, d2: np.ndarray, v1: np.ndarray, v2: np.ndarray) -> float:
     if not are_ccw(d1, d2, v1):
         v1, v2 = v2, v1
 
@@ -62,11 +65,13 @@ def in_circle(d1: np.ndarray, d2: np.ndarray, v1: np.ndarray, v2: np.ndarray) ->
     matrix = [
         [xd1, yd1, xd1 ** 2 + yd1 ** 2, 1],
         [xd2, yd2, xd2 ** 2 + yd2 ** 2, 1],
-        [xv1, yv1, xv1 ** 2 + yv1 **2, 1],
+        [xv1, yv1, xv1 ** 2 + yv1 ** 2, 1],
         [xv2, yv2, xv2 ** 2 + yv2 ** 2, 1]
     ]
 
-    return np.linalg.det(matrix)
+    matrix = np.array(matrix)
+
+    return float(np.linalg.det(matrix))
 
 
 def extract_points_from_file(file_name: str) -> List:
@@ -83,6 +88,7 @@ def extract_points_from_file(file_name: str) -> List:
             points.append([x, y])
 
     return points
+
 
 def is_consec_delaunay_edge(i, j, list_len):
     return abs(i - j) == 1 or abs(i - j) == list_len - 2

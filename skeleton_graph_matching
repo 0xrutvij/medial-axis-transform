@@ -1,0 +1,117 @@
+from collections import defaultdict
+import heapq
+from itertools import product
+from typing import Dict
+from modified_skeleton_algorithm import MedialAxisTransformer
+import numpy as np
+from scipy.spatial import Delaunay
+# import matplotlib.pyplot as plt
+from utils import extract_points_from_file
+
+
+def path_dissimilarity(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=1):
+    r_diff_sq = np.square(puv_r1 - puv_r2)
+    r_sum = puv_r1 + puv_r2
+
+    addend = sum(r_diff_sq / r_sum)
+    augend = weight_factor * ((l1 - l2) ** 2 / (l1 + l2))
+    return addend + augend
+
+
+def dijkstras_shortest_paths(adjacency_map: Dict[int, Dict], start_point: int):
+    distances = {point: (float("inf"), []) for point in adjacency_map.keys()}
+    distances[start_point] = [0, [start_point]]
+
+    priority_queue = [(0, start_point, [start_point])]
+    heapq.heapify(priority_queue)
+
+    while priority_queue:
+        current_dist, current_pt, current_path = heapq.heappop(priority_queue)
+
+        # if we have already reached a point via a shorter path, skip it
+        if current_dist > distances[current_pt][0]:
+            continue
+
+        neighbors = adjacency_map[current_pt]
+
+        for neighbor, ndist in neighbors.items():
+            dist = current_dist + ndist
+            path = current_path + [neighbor]
+
+            # if this route is shorter than any previous routes, add it
+            if dist < distances[neighbor][0]:
+                distances[neighbor] = (dist, path)
+                heapq.heappush(priority_queue, (dist, neighbor, path))
+
+    return distances
+
+
+if __name__ == "__main__":
+    input_file = "shapes/horse-1.txt"
+
+    points = extract_points_from_file(input_file)
+
+    points = np.array(points)
+    num_points = len(points)
+    tri = Delaunay(points)
+
+    ma_skeleton = MedialAxisTransformer.from_delaunay_triangulation(tri)
+
+    skeleton_edges = ma_skeleton.medial_axis_edges
+    point_radii_pair = ma_skeleton.medial_points_radius_pairs
+
+    skeleton_edges = np.array(skeleton_edges)
+    dup_point_list = list(skeleton_edges.reshape(
+        (skeleton_edges.size // 2, 2)))
+
+    skeleton_point_to_id = {}
+    id_to_skeleton_point = {}
+
+    for i, point in enumerate(set(map(tuple, dup_point_list))):
+        skeleton_point_to_id[point] = i
+        id_to_skeleton_point[i] = point
+
+    adjacency_map = defaultdict(dict)
+
+    for edge in skeleton_edges:
+        pt1, pt2 = map(tuple, edge)
+        pid1, pid2 = map(lambda x: skeleton_point_to_id[x], (pt1, pt2))
+
+        dist = np.linalg.norm(np.array(pt1) - np.array(pt2))
+
+        adjacency_map[pid1][pid2] = dist
+        adjacency_map[pid2][pid1] = dist
+
+    num_skeleton_vertices = len(adjacency_map.keys())
+    # print(adjacency_map)
+
+    # find all end points
+    end_points = [point for point,
+                  adj_map in adjacency_map.items() if len(adj_map) == 1]
+
+    # find shortest path between an endpoint and all the points in the graph
+    all_pairs_end_points_distances = {key: float(
+        "inf") if key[0] != key[1] else 0 for key in product(end_points, end_points)}
+
+    ep_set = set(end_points)
+
+    while end_points and any([dist == float("inf") for dist in all_pairs_end_points_distances.values()]):
+        ep = end_points.pop()
+        shortest_paths = dijkstras_shortest_paths(adjacency_map, ep)
+
+        for pt, dist_path in [item for item in shortest_paths.items() if item[0] in ep_set]:
+            dist, path = dist_path
+            all_pairs_end_points_distances[(ep, pt)] = (dist, path)
+            all_pairs_end_points_distances[(pt, ep)] = (
+                dist, list(reversed(path)))
+
+    l1, path1 = all_pairs_end_points_distances[(13, 24)]
+    l2, path2 = all_pairs_end_points_distances[(24, 13)]
+
+    r1 = np.array([point_radii_pair[id_to_skeleton_point[i]] for i in path1])
+    r2 = np.array([point_radii_pair[id_to_skeleton_point[i]] for i in path2])
+
+    print(path_dissimilarity(r1, r2, l1, l2))
+
+    end_points = list(ep_set)
+    print(end_points)

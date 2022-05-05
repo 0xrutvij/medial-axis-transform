@@ -19,7 +19,9 @@ if __name__ == "__main__":
 
     plt.rcParams["figure.figsize"] = (8, 8)
 
-    parser = argparse.ArgumentParser(description="A script to extract the MAT from a shape's point set.")
+    parser = argparse.ArgumentParser(
+        description="A script to extract the MAT from a shape's point set.")
+
     parser.add_argument(
         "-f", "--file",
         type=str,
@@ -33,7 +35,7 @@ if __name__ == "__main__":
     points = extract_points_from_file(input_file)
 
     points = np.array(points)
-    plt.plot(points[:,0], points[:,1], 'o')
+    plt.plot(points[:, 0], points[:, 1], 'o')
 
     num_points = len(points)
     tri = Delaunay(points)
