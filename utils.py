@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, Hashable, List
 import numpy as np
 
 
@@ -92,3 +92,58 @@ def extract_points_from_file(file_name: str) -> List:
 
 def is_consec_delaunay_edge(i, j, list_len):
     return abs(i - j) == 1 or abs(i - j) == list_len - 2
+
+
+class TwoWayDict:
+
+    def __init__(self, T1: Hashable, T2: Hashable) -> None:
+        assert issubclass(T1, Hashable) and issubclass(
+            T2, Hashable), "Keys and values of a TwoWayDict must be Hashable."
+        self.T1 = T1
+        self.T2 = T2
+        self._mapping: Dict[T1, T2] = {}
+        self._inverse_mapping: Dict[T2, T1] = {}
+
+    def __getitem__(self, __o):
+        if isinstance(__o, self.T1):
+            return self._mapping[__o]
+        elif isinstance(__o, self.T2):
+            return self._inverse_mapping[__o]
+        else:
+            raise TypeError(
+                f"TwoWayDict keys must of type {self.T1} or {self.T2}.")
+
+    def __setitem__(self, __o, __v) -> None:
+        if isinstance(__o, self.T1) and isinstance(__v, self.T2):
+            self._mapping[__o] = __v
+            self._inverse_mapping[__v] = __o
+        elif isinstance(__o, self.T2) and isinstance(__v, self.T1):
+            self._inverse_mapping[__o] = __v
+            self._mapping[__v] = __o
+        else:
+            raise TypeError(
+                f"TwoWayDict keys and values must of type {self.T1} or {self.T2}.")
+
+    def __delitem__(self, __o) -> None:
+        if isinstance(__o, self.T1):
+            __v = self._mapping[__o]
+            del self._mapping[__o]
+            del self._inverse_mapping[__v]
+        elif isinstance(__o, self.T2):
+            __v = self._inverse_mapping[__o]
+            del self._inverse_mapping[__o]
+            del self._mapping[__v]
+        else:
+            raise TypeError(
+                f"TwoWayDict keys must of type {self.T1} or {self.T2}.")
+
+    def __len__(self):
+        return len(self._mapping)
+
+    def __contains__(self, __o) -> bool:
+        if isinstance(__o, self.T1):
+            return __o in self._mapping
+        elif isinstance(__o, self.T2):
+            return __o in self._inverse_mapping
+        else:
+            return False

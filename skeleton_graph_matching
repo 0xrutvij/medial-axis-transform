@@ -1,7 +1,7 @@
 from collections import defaultdict
 import heapq
 from itertools import product
-from typing import Dict
+from typing import Dict, List, Tuple
 from modified_skeleton_algorithm import MedialAxisTransformer
 import numpy as np
 from scipy.spatial import Delaunay
@@ -46,58 +46,14 @@ def dijkstras_shortest_paths(adjacency_map: Dict[int, Dict], start_point: int):
     return distances
 
 
-if __name__ == "__main__":
-    input_file = "shapes/horse-1.txt"
-
-    points = extract_points_from_file(input_file)
-
-    points = np.array(points)
-    num_points = len(points)
-    tri = Delaunay(points)
-
-    ma_skeleton = MedialAxisTransformer.from_delaunay_triangulation(tri)
-
-    skeleton_edges = ma_skeleton.medial_axis_edges
-    point_radii_pair = ma_skeleton.medial_points_radius_pairs
-
-    skeleton_edges = np.array(skeleton_edges)
-    dup_point_list = list(skeleton_edges.reshape(
-        (skeleton_edges.size // 2, 2)))
-
-    skeleton_point_to_id = {}
-    id_to_skeleton_point = {}
-
-    for i, point in enumerate(set(map(tuple, dup_point_list))):
-        skeleton_point_to_id[point] = i
-        id_to_skeleton_point[i] = point
-
-    adjacency_map = defaultdict(dict)
-
-    for edge in skeleton_edges:
-        pt1, pt2 = map(tuple, edge)
-        pid1, pid2 = map(lambda x: skeleton_point_to_id[x], (pt1, pt2))
-
-        dist = np.linalg.norm(np.array(pt1) - np.array(pt2))
-
-        adjacency_map[pid1][pid2] = dist
-        adjacency_map[pid2][pid1] = dist
-
-    num_skeleton_vertices = len(adjacency_map.keys())
-    # print(adjacency_map)
-
-    # find all end points
-    end_points = [point for point,
-                  adj_map in adjacency_map.items() if len(adj_map) == 1]
-
-    # find shortest path between an endpoint and all the points in the graph
+def get_shape_paths(endpoints: List, graph: Dict[int, Dict]) -> Dict[Tuple, Tuple[int, List]]:
     all_pairs_end_points_distances = {key: float(
-        "inf") if key[0] != key[1] else 0 for key in product(end_points, end_points)}
+        "inf") if key[0] != key[1] else (0, []) for key in product(endpoints, endpoints)}
+    ep_set = set(endpoints)
 
-    ep_set = set(end_points)
-
-    while end_points and any([dist == float("inf") for dist in all_pairs_end_points_distances.values()]):
-        ep = end_points.pop()
-        shortest_paths = dijkstras_shortest_paths(adjacency_map, ep)
+    while endpoints and any([dist == float("inf") for dist in all_pairs_end_points_distances.values()]):
+        ep = endpoints.pop()
+        shortest_paths = dijkstras_shortest_paths(graph, ep)
 
         for pt, dist_path in [item for item in shortest_paths.items() if item[0] in ep_set]:
             dist, path = dist_path
@@ -105,13 +61,48 @@ if __name__ == "__main__":
             all_pairs_end_points_distances[(pt, ep)] = (
                 dist, list(reversed(path)))
 
-    l1, path1 = all_pairs_end_points_distances[(13, 24)]
-    l2, path2 = all_pairs_end_points_distances[(24, 13)]
+    return all_pairs_end_points_distances
 
-    r1 = np.array([point_radii_pair[id_to_skeleton_point[i]] for i in path1])
-    r2 = np.array([point_radii_pair[id_to_skeleton_point[i]] for i in path2])
+
+if __name__ == "__main__":
+    input_file1 = "shapes/horse-1.txt"
+    input_file2 = "shapes/horse-19.txt"
+
+    points1 = extract_points_from_file(input_file1)
+    points2 = extract_points_from_file(input_file2)
+
+    ma_skeleton1 = MedialAxisTransformer.from_boundary_points(points1)
+    ma_skeleton2 = MedialAxisTransformer.from_boundary_points(points2)
+
+    adjacency_map1 = ma_skeleton1.skeleton_graph
+    end_points1 = ma_skeleton1.skeleton_end_point_indices
+
+    adjacency_map2 = ma_skeleton2.skeleton_graph
+    end_points2 = ma_skeleton2.skeleton_end_point_indices
+
+    print(end_points1)
+    print(end_points2)
+
+    # find shortest path between an endpoint and all the points in the graph
+    all_ep_pair_sps1 = get_shape_paths(end_points1.copy(), adjacency_map1)
+    all_ep_pair_sps2 = get_shape_paths(end_points2.copy(), adjacency_map2)
+
+    # seen_lengths = defaultdict(list)
+    # for ep in product(end_points1, end_points1):
+    #     _, path = all_ep_pair_sps1[ep]
+    #     if len(path) > 1:
+    #         seen_lengths[len(path)].append(ep)
+
+    # for ep in product(end_points2, end_points2):
+    #     _, path = all_ep_pair_sps2[ep]
+    #     if len(path) in seen_lengths:
+    #         print(f"This {ep}: {len(path)}")
+    #         print(f"Possible matches {seen_lengths[len(path)]}")
+
+    l1, path1 = all_ep_pair_sps1[(13, 40)]
+    l2, path2 = all_ep_pair_sps2[(12, 43)]
+
+    r1 = ma_skeleton1.get_radii_vector_along_path(path1)
+    r2 = ma_skeleton2.get_radii_vector_along_path(path2)
 
     print(path_dissimilarity(r1, r2, l1, l2))
-
-    end_points = list(ep_set)
-    print(end_points)

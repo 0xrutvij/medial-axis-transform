@@ -1,6 +1,6 @@
 from scipy.spatial import Delaunay
-from collections import deque
-from utils import compute_triangle_circumcenters, is_consec_delaunay_edge, in_circle
+from collections import defaultdict, deque
+from utils import TwoWayDict, compute_triangle_circumcenters, is_consec_delaunay_edge, in_circle
 from typing import List, Dict, Tuple
 
 import numpy as np
@@ -11,6 +11,57 @@ class MedialAxisTransformer:
     def __init__(self):
         self.medial_axis_edges = []
         self.medial_points_radius_pairs = {}
+        self.medial_axis_point_idx_map = TwoWayDict(Tuple, int)
+        self._endpoints: List = None
+        self._adjacency_map: Dict[int, Dict] = None
+
+    def _set_medial_axis_point_mapping(self):
+        skeleton_edges = np.array(self.medial_axis_edges)
+        dup_point_list = list(skeleton_edges.reshape(
+            (skeleton_edges.size // 2, 2)))
+
+        for i, point in enumerate(set(map(tuple, dup_point_list))):
+            self.medial_axis_point_idx_map[point] = i
+
+    def get_radii_vector_along_path(self, path_pt_indices: List[int]) -> np.ndarray:
+        radii = [self.medial_points_radius_pairs[self.medial_axis_point_idx_map[i]]
+                 for i in path_pt_indices]
+        r1 = np.array(radii)
+        sr1 = sum(r1)
+        n = len(radii)
+        normalization_div = (sr1 / n)
+        return r1 / normalization_div
+
+    @property
+    def skeleton_end_point_indices(self) -> List:
+        if self._endpoints is None:
+            self._create_skeleton_graph()
+        return self._endpoints.copy()
+
+    @property
+    def skeleton_graph(self) -> Dict[int, Dict]:
+        if self._adjacency_map is None:
+            self._create_skeleton_graph()
+        return self._adjacency_map
+
+    def _create_skeleton_graph(self) -> None:
+
+        adjacency_map = defaultdict(dict)
+
+        for edge in self.medial_axis_edges:
+            pt1, pt2 = map(tuple, edge)
+            pid1, pid2 = map(
+                lambda x: self.medial_axis_point_idx_map[x], (pt1, pt2))
+
+            dist = np.linalg.norm(np.array(pt1) - np.array(pt2))
+
+            adjacency_map[pid1][pid2] = dist
+            adjacency_map[pid2][pid1] = dist
+
+        self._endpoints = [point for point,
+                           adj_map in adjacency_map.items() if len(adj_map) == 1]
+
+        self._adjacency_map = adjacency_map
 
     @staticmethod
     def _classify_delaunay_faces(delaunay_triangulation: Delaunay) -> Dict:
@@ -133,5 +184,12 @@ class MedialAxisTransformer:
 
         mat_obj.medial_axis_edges = mae
         mat_obj.medial_points_radius_pairs = mprp
+        mat_obj._set_medial_axis_point_mapping()
 
         return mat_obj
+
+    @classmethod
+    def from_boundary_points(cls, points: List):
+        points = np.array(points)
+        tri = Delaunay(points)
+        return cls.from_delaunay_triangulation(tri)
