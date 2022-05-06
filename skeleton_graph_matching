@@ -5,15 +5,26 @@ from typing import Dict, List, Tuple
 from modified_skeleton_algorithm import MedialAxisTransformer
 import numpy as np
 from scipy.spatial import Delaunay
-# import matplotlib.pyplot as plt
+import math
+import matplotlib.pyplot as plt
 from utils import extract_points_from_file
 
 
-def path_dissimilarity(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=1):
+def sort_counterclockwise(points: np.ndarray, centre: np.ndarray = None):
+    if centre is None:
+        centre = np.mean(points, axis=0)
+
+    diff = points - centre
+    angles = np.arctan2(diff[:, 1], diff[:, 0])
+    counterclockwise_points = points[np.argsort(angles)]
+    return counterclockwise_points
+
+
+def path_distance(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=1):
     r_diff_sq = np.square(puv_r1 - puv_r2)
     r_sum = puv_r1 + puv_r2
 
-    addend = sum(r_diff_sq / r_sum)
+    addend = np.sum(r_diff_sq / r_sum)
     augend = weight_factor * ((l1 - l2) ** 2 / (l1 + l2))
     return addend + augend
 
@@ -80,7 +91,22 @@ if __name__ == "__main__":
     adjacency_map2 = ma_skeleton2.skeleton_graph
     end_points2 = ma_skeleton2.skeleton_end_point_indices
 
+    eps1 = np.array([ma_skeleton1.medial_axis_point_idx_map[i]
+                    for i in end_points1])
+    print(sort_counterclockwise(eps1))
+    eps1 = sort_counterclockwise(eps1)
+    end_points1 = [
+        ma_skeleton1.medial_axis_point_idx_map[tuple(pt)] for pt in eps1]
     print(end_points1)
+    eps1 = np.array(eps1)
+
+    plt.scatter(eps1[:, 0], eps1[:, 1])
+
+    for i, label in enumerate(end_points1):
+        plt.annotate(str(label), tuple(eps1[i]))
+
+    plt.show()
+
     print(end_points2)
 
     # find shortest path between an endpoint and all the points in the graph
@@ -105,4 +131,12 @@ if __name__ == "__main__":
     r1 = ma_skeleton1.get_radii_vector_along_path(path1)
     r2 = ma_skeleton2.get_radii_vector_along_path(path2)
 
-    print(path_dissimilarity(r1, r2, l1, l2))
+    print(path_distance(r1, r2, l1, l2))
+
+    # TODO: List
+    # (1) Sampling equidistant points along the path
+    # (2) path distance matrix
+    # (3) optimal subsequence bijection
+    # (4) Hungarian algorithm [D ? scipy.optimize.linear_sum_assignment]
+    # (5) Sorting points in clockwise direction [D]
+    # (6) ?
