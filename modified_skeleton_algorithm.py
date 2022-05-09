@@ -1,6 +1,13 @@
 from scipy.spatial import Delaunay
 from collections import defaultdict, deque
-from utils import TwoWayDict, compute_triangle_circumcenters, is_consec_delaunay_edge, in_circle
+from utils import (
+    TwoWayDict,
+    compute_triangle_circumcenters,
+    get_shape_paths,
+    is_consec_delaunay_edge,
+    in_circle,
+    sort_counterclockwise
+)
 from typing import List, Dict, Tuple
 
 import numpy as np
@@ -12,7 +19,9 @@ class MedialAxisTransformer:
         self.medial_axis_edges = []
         self.medial_points_radius_pairs = {}
         self.medial_axis_point_idx_map = TwoWayDict(Tuple, int)
+        self._endpoint_indices: List = None
         self._endpoints: List = None
+        self._apepsp: Dict = None
         self._adjacency_map: Dict[int, Dict] = None
 
     def _set_medial_axis_point_mapping(self):
@@ -34,9 +43,27 @@ class MedialAxisTransformer:
 
     @property
     def skeleton_end_point_indices(self) -> List:
-        if self._endpoints is None:
+        if self._endpoint_indices is None:
             self._create_skeleton_graph()
-        return self._endpoints.copy()
+        return self._endpoint_indices.copy()
+
+    @property
+    def skeleton_end_points(self) -> np.ndarray:
+        if self._endpoints is None:
+            ep_idxs = self.skeleton_end_point_indices
+            eps = np.array([self.medial_axis_point_idx_map[i]
+                           for i in ep_idxs])
+            self._endpoints = sort_counterclockwise(eps)
+        return self._endpoints
+
+    @property
+    def all_pair_eps_shortest_paths(self) -> np.ndarray:
+        if self._apepsp is None:
+            self._apepsp = get_shape_paths(
+                self.skeleton_end_point_indices,
+                self.skeleton_graph
+            )
+        return self._apepsp
 
     @property
     def skeleton_graph(self) -> Dict[int, Dict]:
@@ -58,8 +85,8 @@ class MedialAxisTransformer:
             adjacency_map[pid1][pid2] = dist
             adjacency_map[pid2][pid1] = dist
 
-        self._endpoints = [point for point,
-                           adj_map in adjacency_map.items() if len(adj_map) == 1]
+        self._endpoint_indices = [point for point,
+                                  adj_map in adjacency_map.items() if len(adj_map) == 1]
 
         self._adjacency_map = adjacency_map
 

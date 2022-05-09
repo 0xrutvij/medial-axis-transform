@@ -1,4 +1,6 @@
-from typing import Dict, Hashable, List
+import heapq
+from itertools import product
+from typing import Dict, Hashable, List, Tuple
 import numpy as np
 
 
@@ -147,3 +149,62 @@ class TwoWayDict:
             return __o in self._inverse_mapping
         else:
             return False
+
+
+def sort_counterclockwise(points: np.ndarray, centre: np.ndarray = None):
+    if centre is None:
+        centre = np.mean(points, axis=0)
+
+    diff = points - centre
+    angles = np.arctan2(diff[:, 1], diff[:, 0])
+    counterclockwise_points = points[np.argsort(angles)]
+    return counterclockwise_points
+
+
+def dijkstras_shortest_paths(adjacency_map: Dict[int, Dict], start_point: int):
+    distances = {point: (float("inf"), []) for point in adjacency_map.keys()}
+    distances[start_point] = [0, [start_point]]
+
+    priority_queue = [(0, start_point, [start_point])]
+    heapq.heapify(priority_queue)
+
+    while priority_queue:
+        current_dist, current_pt, current_path = heapq.heappop(priority_queue)
+
+        # if we have already reached a point via a shorter path, skip it
+        if current_dist > distances[current_pt][0]:
+            continue
+
+        neighbors = adjacency_map[current_pt]
+
+        for neighbor, ndist in neighbors.items():
+            dist = current_dist + ndist
+            path = current_path + [neighbor]
+
+            # if this route is shorter than any previous routes, add it
+            if dist < distances[neighbor][0]:
+                distances[neighbor] = (dist, path)
+                heapq.heappush(priority_queue, (dist, neighbor, path))
+
+    return distances
+
+
+def get_shape_paths(endpoints: List, graph: Dict[int, Dict]) -> Dict[Tuple, Tuple[int, List]]:
+    all_pairs_end_points_distances = {key: float(
+        "inf") if key[0] != key[1] else (0, []) for key in product(endpoints, endpoints)}
+    ep_set = set(endpoints)
+
+    while endpoints and any(
+        [dist == float("inf")
+         for dist in all_pairs_end_points_distances.values()]
+    ):
+        ep = endpoints.pop()
+        shortest_paths = dijkstras_shortest_paths(graph, ep)
+
+        for pt, dist_path in [item for item in shortest_paths.items() if item[0] in ep_set]:
+            dist, path = dist_path
+            all_pairs_end_points_distances[(ep, pt)] = (dist, path)
+            all_pairs_end_points_distances[(pt, ep)] = (
+                dist, list(reversed(path)))
+
+    return all_pairs_end_points_distances

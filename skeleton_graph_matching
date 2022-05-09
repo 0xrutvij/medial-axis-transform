@@ -1,26 +1,17 @@
-from collections import defaultdict
-import heapq
-from itertools import product
-from typing import Dict, List, Tuple
+import bisect
+import itertools
+from typing import Dict, List
 from modified_skeleton_algorithm import MedialAxisTransformer
 import numpy as np
-from scipy.spatial import Delaunay
-import math
 import matplotlib.pyplot as plt
-from utils import extract_points_from_file
+from utils import (
+    extract_points_from_file,
+    sort_counterclockwise,
+    get_shape_paths,
+)
 
 
-def sort_counterclockwise(points: np.ndarray, centre: np.ndarray = None):
-    if centre is None:
-        centre = np.mean(points, axis=0)
-
-    diff = points - centre
-    angles = np.arctan2(diff[:, 1], diff[:, 0])
-    counterclockwise_points = points[np.argsort(angles)]
-    return counterclockwise_points
-
-
-def path_distance(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=1):
+def path_distance(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=30):
     r_diff_sq = np.square(puv_r1 - puv_r2)
     r_sum = puv_r1 + puv_r2
 
@@ -29,53 +20,34 @@ def path_distance(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, 
     return addend + augend
 
 
-def dijkstras_shortest_paths(adjacency_map: Dict[int, Dict], start_point: int):
-    distances = {point: (float("inf"), []) for point in adjacency_map.keys()}
-    distances[start_point] = [0, [start_point]]
+def sample_path_for_radii(path_points, radii, path_len, n_samples=20):
 
-    priority_queue = [(0, start_point, [start_point])]
-    heapq.heapify(priority_queue)
+    path_pwise_dists = []
+    for pt1, pt2 in itertools.pairwise(path_points):
+        dist = np.linalg.norm(pt2 - pt1)
+        path_pwise_dists.append(round(dist, 6))
 
-    while priority_queue:
-        current_dist, current_pt, current_path = heapq.heappop(priority_queue)
+    path_dists = np.array(path_pwise_dists).cumsum()
 
-        # if we have already reached a point via a shorter path, skip it
-        if current_dist > distances[current_pt][0]:
+    new_rs = []
+    for x in range(n_samples + 1):
+        qd = x * (path_len / n_samples)
+        ix = bisect.bisect_left(path_dists, qd)
+        if qd < 0.00000001:
+            new_rs.append(radii[0])
             continue
 
-        neighbors = adjacency_map[current_pt]
+        diffs = np.flip(abs(path_dists[ix-1:ix+1] - qd))
+        rs = radii[ix-1:ix+1]
+        contrib = diffs.round(5) * rs
+        denom = sum(diffs)
+        new_r = contrib.sum() / denom
+        new_rs.append(new_r)
 
-        for neighbor, ndist in neighbors.items():
-            dist = current_dist + ndist
-            path = current_path + [neighbor]
-
-            # if this route is shorter than any previous routes, add it
-            if dist < distances[neighbor][0]:
-                distances[neighbor] = (dist, path)
-                heapq.heappush(priority_queue, (dist, neighbor, path))
-
-    return distances
+    return np.array(new_rs)
 
 
-def get_shape_paths(endpoints: List, graph: Dict[int, Dict]) -> Dict[Tuple, Tuple[int, List]]:
-    all_pairs_end_points_distances = {key: float(
-        "inf") if key[0] != key[1] else (0, []) for key in product(endpoints, endpoints)}
-    ep_set = set(endpoints)
-
-    while endpoints and any([dist == float("inf") for dist in all_pairs_end_points_distances.values()]):
-        ep = endpoints.pop()
-        shortest_paths = dijkstras_shortest_paths(graph, ep)
-
-        for pt, dist_path in [item for item in shortest_paths.items() if item[0] in ep_set]:
-            dist, path = dist_path
-            all_pairs_end_points_distances[(ep, pt)] = (dist, path)
-            all_pairs_end_points_distances[(pt, ep)] = (
-                dist, list(reversed(path)))
-
-    return all_pairs_end_points_distances
-
-
-if __name__ == "__main__":
+def main1():
     input_file1 = "shapes/horse-1.txt"
     input_file2 = "shapes/horse-19.txt"
 
@@ -93,12 +65,8 @@ if __name__ == "__main__":
 
     eps1 = np.array([ma_skeleton1.medial_axis_point_idx_map[i]
                     for i in end_points1])
-    print(sort_counterclockwise(eps1))
+
     eps1 = sort_counterclockwise(eps1)
-    end_points1 = [
-        ma_skeleton1.medial_axis_point_idx_map[tuple(pt)] for pt in eps1]
-    print(end_points1)
-    eps1 = np.array(eps1)
 
     plt.scatter(eps1[:, 0], eps1[:, 1])
 
@@ -106,8 +74,6 @@ if __name__ == "__main__":
         plt.annotate(str(label), tuple(eps1[i]))
 
     plt.show()
-
-    print(end_points2)
 
     # find shortest path between an endpoint and all the points in the graph
     all_ep_pair_sps1 = get_shape_paths(end_points1.copy(), adjacency_map1)
@@ -140,3 +106,48 @@ if __name__ == "__main__":
     # (4) Hungarian algorithm [D ? scipy.optimize.linear_sum_assignment]
     # (5) Sorting points in clockwise direction [D]
     # (6) ?
+
+
+def main2(f1, f2):
+    g_pts, gprime_pts = map(extract_points_from_file, [f1, f2])
+    mas1, mas2 = map(MedialAxisTransformer.from_boundary_points, [
+                     g_pts, gprime_pts])
+    end_points1, end_points2 = mas1.skeleton_end_points, mas2.skeleton_end_points
+
+    fig, ax = plt.subplots(1, 2, sharex=False, sharey=True)
+    fig.set_size_inches((12.8, 4.8))
+
+    ax[0].scatter(end_points1[:, 0], end_points1[:, 1], c="b")
+    ax[1].scatter(end_points2[:, 0], end_points2[:, 1], c="r")
+
+    for pt in end_points1:
+        ax[0].annotate(str(mas1.medial_axis_point_idx_map[tuple(pt)]), pt)
+
+    for pt in end_points2:
+        ax[1].annotate(str(mas2.medial_axis_point_idx_map[tuple(pt)]), pt)
+
+    # print([mas1.medial_axis_point_idx_map[tuple(pt)] for pt in end_points1])
+
+    plt.show()
+
+    l1, path1 = mas1.all_pair_eps_shortest_paths[(13, 40)]
+    l2, path2 = mas2.all_pair_eps_shortest_paths[(43, 86)]
+
+    r1 = mas1.get_radii_vector_along_path(path1)
+    r2 = mas2.get_radii_vector_along_path(path2)
+
+    rn1 = sample_path_for_radii(
+        [np.array(mas1.medial_axis_point_idx_map[i]) for i in path1], r1, l1)
+    rn2 = sample_path_for_radii(
+        [np.array(mas2.medial_axis_point_idx_map[i]) for i in path2], r2, l2)
+
+    # print(path_distance(r1, r2, l1, l2))
+    # distance between two similar paths in different horse figs
+    print(path_distance(rn1, rn2, l1, l2))
+
+
+if __name__ == "__main__":
+    if1 = "shapes/horse-1.txt"
+    if2 = "shapes/horse-19.txt"
+
+    main2(if1, if2)
