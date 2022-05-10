@@ -203,8 +203,8 @@ def get_shape_paths(endpoints: List, graph: Dict[int, Dict]) -> Dict[Tuple, Tupl
 
         for pt, dist_path in [item for item in shortest_paths.items() if item[0] in ep_set]:
             dist, path = dist_path
-            all_pairs_end_points_distances[(ep, pt)] = (dist, path)
+            all_pairs_end_points_distances[(ep, pt)] = (dist, tuple(path))
             all_pairs_end_points_distances[(pt, ep)] = (
-                dist, list(reversed(path)))
+                dist, tuple(reversed(path)))
 
     return all_pairs_end_points_distances

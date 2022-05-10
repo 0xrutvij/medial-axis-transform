@@ -1,3 +1,6 @@
+import bisect
+from functools import cache
+import itertools
 from scipy.spatial import Delaunay
 from collections import defaultdict, deque
 from utils import (
@@ -11,6 +14,33 @@ from utils import (
 from typing import List, Dict, Tuple
 
 import numpy as np
+
+
+def sample_path_for_radii(path_points, radii, path_len, n_samples=20):
+
+    path_pwise_dists = []
+    for pt1, pt2 in itertools.pairwise(path_points):
+        dist = np.linalg.norm(pt2 - pt1)
+        path_pwise_dists.append(round(dist, 6))
+
+    path_dists = np.array(path_pwise_dists).cumsum()
+
+    new_rs = []
+    for x in range(n_samples + 1):
+        qd = x * (path_len / n_samples)
+        ix = bisect.bisect_left(path_dists, qd)
+        if ix == 0:
+            new_rs.append(radii[0])
+            continue
+
+        diffs = np.flip(abs(path_dists[ix - 1:ix + 1] - qd))
+        rs = radii[ix - 1:ix + 1]
+        contrib = diffs.round(5) * rs
+        denom = sum(diffs)
+        new_r = contrib.sum() / denom
+        new_rs.append(new_r)
+
+    return np.array(new_rs)
 
 
 class MedialAxisTransformer:
@@ -32,6 +62,7 @@ class MedialAxisTransformer:
         for i, point in enumerate(set(map(tuple, dup_point_list))):
             self.medial_axis_point_idx_map[point] = i
 
+    @cache
     def get_radii_vector_along_path(self, path_pt_indices: List[int]) -> np.ndarray:
         radii = [self.medial_points_radius_pairs[self.medial_axis_point_idx_map[i]]
                  for i in path_pt_indices]
@@ -39,7 +70,16 @@ class MedialAxisTransformer:
         sr1 = sum(r1)
         n = len(radii)
         normalization_div = (sr1 / n)
-        return r1 / normalization_div
+        return np.array(r1 / normalization_div)
+
+    @cache
+    def sampled_radii_vector_along_path(self, path_pt_indices: List[int], path_len: float,
+                                        n_samples: int = 20):
+        radii = self.get_radii_vector_along_path(path_pt_indices)
+        path_points = [np.array(self.medial_axis_point_idx_map[i])
+                       for i in path_pt_indices]
+        return sample_path_for_radii(path_points=path_points, radii=radii, path_len=path_len,
+                                     n_samples=n_samples)
 
     @property
     def skeleton_end_point_indices(self) -> List:

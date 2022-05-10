@@ -1,34 +1,17 @@
 import numpy as np
 
 
-def optimal_subsequence_bijection(matx, warpwin=float('inf'), qskip=float('inf'),
-                                  tskip=float('inf'), jumpcost=None, all_vals=False):
-    # m = len(t1)
-    # n = len(t2)
+def optimal_subsequence_bijection(matx, jumpcost=None, all_vals=False):
     m, n = matx.shape
-
-    # matx = np.zeros((m, n))
-
-    # for r in range(m):
-    #     matx[r, :] = np.square(t2 - t1[r])
 
     if jumpcost is None:
         # minimum value in each row
         rowise_min = np.min(matx, axis=1)
-        # temp
-        # columnwise_min = np.min(matx, axis=0)
-        # jumpcost = min(np.std(rowise_min) + np.mean(rowise_min),
-        #                np.std(columnwise_min) + np.mean(columnwise_min))
         jumpcost = np.std(rowise_min) + np.mean(rowise_min)
 
-    # matxE = np.full((m+1, n), np.inf)
-    # temp
     matxE = np.full((m + 1, n), np.inf)
     matxE[:m, :n] = matx
-    # temp
-    # matxE[m, n] = 0
-    pathcost, indxrow, indxcol = find_path_DAG(
-        matxE, warpwin, qskip, tskip, jumpcost)
+    pathcost, indxrow, indxcol = find_path_DAG(matxE, jumpcost)
     pathcost = pathcost / len(indxrow)
 
     if all_vals:
@@ -37,7 +20,7 @@ def optimal_subsequence_bijection(matx, warpwin=float('inf'), qskip=float('inf')
         return pathcost
 
 
-def find_path_DAG(matx, warpwin, qskip, tskip, jumpcost):
+def find_path_DAG(matx, jumpcost):
     m, n = matx.shape
     weights = np.full_like(matx, np.inf)
     camefromcol = np.full_like(matx, -1)
@@ -48,18 +31,20 @@ def find_path_DAG(matx, warpwin, qskip, tskip, jumpcost):
 
     for i in range(m - 1):
         for j in range(i, n - 1):
-            if abs(i - j) <= warpwin:
-                stoprowjump = min([m, i + qskip + 1])
-                for rowjump in range(i + 1, stoprowjump):
-                    stopk = min([n, j + tskip + 1])
-                    for k in range(j + 1, stopk):
-                        newweight = (weights[i, j]
-                                     + matx[rowjump, k]
-                                     + ((rowjump - i - 1) + (k - j - 1)) * jumpcost)
-                        if weights[rowjump, k] > newweight:
-                            weights[rowjump, k] = newweight
-                            camefromcol[rowjump, k] = j
-                            camefromrow[rowjump, k] = i
+            for k in range(i + 1, m - 1):
+                # pylama:ignore=E741
+                for l in range(j + 1, n - 1):
+                    newweight = np.inf
+                    dx, dy = i + 1, j + 1
+                    if dx == k and dy <= l:
+                        newweight = weights[i, j]
+                    elif dx < k and dy <= l:
+                        newweight = (k - i - 1) * jumpcost
+
+                    if weights[k, l] > newweight:
+                        weights[k, l] = newweight
+                        camefromcol[k, l] = j
+                        camefromrow[k, l] = i
 
     pathcost = np.min(weights[m - 2, 1:])
     mincol = np.argmin(weights[m - 2, 1:])
