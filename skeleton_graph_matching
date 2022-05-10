@@ -1,9 +1,12 @@
 import bisect
 import itertools
 from typing import Dict, List
+
+from scipy.optimize import linear_sum_assignment
 from modified_skeleton_algorithm import MedialAxisTransformer
 import numpy as np
 import matplotlib.pyplot as plt
+from osb import optimal_subsequence_bijection
 from utils import (
     extract_points_from_file,
     sort_counterclockwise,
@@ -11,13 +14,53 @@ from utils import (
 )
 
 
+def optimal_subsequence_bijection(sequence1, sequence2, distances_ps1_ps2):
+    pass
+
+
 def path_distance(puv_r1: np.ndarray, puv_r2: np.ndarray, l1: float, l2: float, weight_factor=30):
+    """Distance between two paths"""
     r_diff_sq = np.square(puv_r1 - puv_r2)
     r_sum = puv_r1 + puv_r2
 
-    addend = np.sum(r_diff_sq / r_sum)
+    ratio = r_diff_sq / (r_sum + 0.00000001)
+    addend = np.sum(ratio)
     augend = weight_factor * ((l1 - l2) ** 2 / (l1 + l2))
     return addend + augend
+
+
+def path_distance_matrix(
+    vi: int,
+    g: MedialAxisTransformer,
+    vj_prime: int,
+    g_prime: MedialAxisTransformer
+) -> np.ndarray:
+
+    if len(g.skeleton_end_points) > len(g_prime.skeleton_end_points):
+        g, g_prime = g_prime, g
+        vi, vj_prime = vj_prime, vi
+
+    ks = [g.all_pair_eps_shortest_paths[(vi, x)]
+          for x in g.skeleton_end_point_indices if x != vi]
+    ns = [g_prime.all_pair_eps_shortest_paths[(
+        vj_prime, x)] for x in g_prime.skeleton_end_point_indices if x != vj_prime]
+
+    pd_mat = []
+    for l_k, path_k in ks:
+        pd_mat_row = []
+        for l_n, path_n in ns:
+            r1 = g.get_radii_vector_along_path(path_k)
+            r2 = g_prime.get_radii_vector_along_path(path_n)
+
+            rn1 = sample_path_for_radii(
+                [np.array(g.medial_axis_point_idx_map[i]) for i in path_k], r1, l_k)
+            rn2 = sample_path_for_radii(
+                [np.array(g_prime.medial_axis_point_idx_map[i]) for i in path_n], r2, l_n)
+
+            pd_mat_row.append(round(path_distance(rn1, rn2, l_k, l_n), 2))
+        pd_mat.append(pd_mat_row)
+
+    return pd_mat
 
 
 def sample_path_for_radii(path_points, radii, path_len, n_samples=20):
@@ -33,7 +76,7 @@ def sample_path_for_radii(path_points, radii, path_len, n_samples=20):
     for x in range(n_samples + 1):
         qd = x * (path_len / n_samples)
         ix = bisect.bisect_left(path_dists, qd)
-        if qd < 0.00000001:
+        if ix == 0:
             new_rs.append(radii[0])
             continue
 
@@ -114,36 +157,62 @@ def main2(f1, f2):
                      g_pts, gprime_pts])
     end_points1, end_points2 = mas1.skeleton_end_points, mas2.skeleton_end_points
 
-    fig, ax = plt.subplots(1, 2, sharex=False, sharey=True)
-    fig.set_size_inches((12.8, 4.8))
-
-    ax[0].scatter(end_points1[:, 0], end_points1[:, 1], c="b")
-    ax[1].scatter(end_points2[:, 0], end_points2[:, 1], c="r")
-
-    for pt in end_points1:
-        ax[0].annotate(str(mas1.medial_axis_point_idx_map[tuple(pt)]), pt)
-
-    for pt in end_points2:
-        ax[1].annotate(str(mas2.medial_axis_point_idx_map[tuple(pt)]), pt)
-
     # print([mas1.medial_axis_point_idx_map[tuple(pt)] for pt in end_points1])
 
-    plt.show()
+    # print(mas1.all_pair_eps_shortest_paths)
 
-    l1, path1 = mas1.all_pair_eps_shortest_paths[(13, 40)]
-    l2, path2 = mas2.all_pair_eps_shortest_paths[(43, 86)]
+    # l1, path1 = mas1.all_pair_eps_shortest_paths[(13, 40)]
+    # l2, path2 = mas2.all_pair_eps_shortest_paths[(43, 86)]
 
-    r1 = mas1.get_radii_vector_along_path(path1)
-    r2 = mas2.get_radii_vector_along_path(path2)
+    # r1 = mas1.get_radii_vector_along_path(path1)
+    # r2 = mas2.get_radii_vector_along_path(path2)
 
-    rn1 = sample_path_for_radii(
-        [np.array(mas1.medial_axis_point_idx_map[i]) for i in path1], r1, l1)
-    rn2 = sample_path_for_radii(
-        [np.array(mas2.medial_axis_point_idx_map[i]) for i in path2], r2, l2)
+    # rn1 = sample_path_for_radii([np.array(mas1.medial_axis_point_idx_map[i]) for i in path1], r1, l1)
+    # rn2 = sample_path_for_radii([np.array(mas2.medial_axis_point_idx_map[i]) for i in path2], r2, l2)
 
     # print(path_distance(r1, r2, l1, l2))
     # distance between two similar paths in different horse figs
-    print(path_distance(rn1, rn2, l1, l2))
+    # print(path_distance(rn1, rn2, l1, l2))
+    # np.set_printoptions(precision=2)
+
+    corr = []
+    for i in mas1.skeleton_end_point_indices:
+        corr_row = []
+        for j in mas2.skeleton_end_point_indices:
+            # print(path_distance_matrix(i, mas1, j, mas2))
+            corr_row.append(
+                optimal_subsequence_bijection(np.array(path_distance_matrix(i, mas1, j, mas2))))
+        corr.append(corr_row)
+
+    _, gp = linear_sum_assignment(np.array(corr))
+    pairs = []
+    for i, j in enumerate(gp):
+        gi = mas1.skeleton_end_point_indices[i]
+        gj = mas2.skeleton_end_point_indices[j]
+        pairs.append((gi, gj))
+
+    # print(pairs)
+    fig, ax = plt.subplots(2, 2, sharex=True, sharey=True)
+    fig.set_size_inches((9.6, 7.2))
+
+    ax[0, 0].scatter(end_points1[:, 0], end_points1[:, 1], c="b")
+    ax[0, 0].axis('off')
+    ax[0, 1].scatter(end_points2[:, 0], end_points2[:, 1], c="r")
+    ax[0, 1].axis('off')
+    gp1, gp2 = map(np.array, (g_pts, gprime_pts))
+    ax[1, 0].scatter(gp1[:, 0], gp1[:, 1])
+    ax[1, 0].axis('off')
+    ax[1, 1].scatter(gp2[:, 0], gp2[:, 1])
+    ax[1, 1].axis('off')
+
+    for pt in end_points1:
+        ax[0, 0].annotate(str(mas1.medial_axis_point_idx_map[tuple(pt)]), pt)
+
+    for pt in end_points2:
+        ax[0, 1].annotate(str(mas2.medial_axis_point_idx_map[tuple(pt)]), pt)
+
+    plt.suptitle(str(pairs))
+    plt.show()
 
 
 if __name__ == "__main__":
