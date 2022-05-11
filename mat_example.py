@@ -5,6 +5,7 @@ import numpy as np
 from modified_skeleton_algorithm import MedialAxisTransformer
 from scipy.spatial import Delaunay
 from utils import extract_points_from_file
+from skeleton_graph_matching import match_shape
 
 # skeleton_edges = np.array(skeleton_edges)
 # graph_nodes_all = skeleton_edges.reshape((skeleton_edges.size // 2, 2))
@@ -26,45 +27,55 @@ if __name__ == "__main__":
         "-f", "--file",
         type=str,
         help="file containing points as x-y pairs (format same as that for files in shapes folder)",
-        default="shapes/horse-1.txt"
+        default="shapes/horse/horse_1.txt"
     )
+
+    mex_grp = parser.add_mutually_exclusive_group(required=True)
+    mex_grp.add_argument("-s", "--skeleton", action="store_true",
+                         help="Display the Medial Axis Skeleton of the shape in given input file.")
+    mex_grp.add_argument("-m", "--shape-matching", action="store_true",
+                         help="Find the best match shape for the shape in given input file.")
 
     args = parser.parse_args()
     input_file = args.file
 
-    points = extract_points_from_file(input_file)
+    if args.skeleton:
+        points = extract_points_from_file(input_file)
 
-    points = np.array(points)
-    plt.plot(points[:, 0], points[:, 1], 'o')
+        points = np.array(points)
+        plt.plot(points[:, 0], points[:, 1], 'o')
 
-    num_points = len(points)
-    tri = Delaunay(points)
+        num_points = len(points)
+        tri = Delaunay(points)
 
-    ma_skeleton = MedialAxisTransformer.from_delaunay_triangulation(tri)
+        ma_skeleton = MedialAxisTransformer.from_delaunay_triangulation(tri)
 
-    skeleton_edges = ma_skeleton.medial_axis_edges
-    point_radii_pair = ma_skeleton.medial_points_radius_pairs
+        skeleton_edges = ma_skeleton.medial_axis_edges
+        point_radii_pair = ma_skeleton.medial_points_radius_pairs
 
-    visited = set()
-    for edge in skeleton_edges:
-        start, end = edge
-        xs, ys = [start[0], end[0]], [start[1], end[1]]
-        edge_key = (tuple(xs), tuple(ys))
-        if edge_key not in visited:
-            visited.add(edge_key)
-        else:
-            continue
-        plt.plot(xs, ys, "b")
+        visited = set()
+        for edge in skeleton_edges:
+            start, end = edge
+            xs, ys = [start[0], end[0]], [start[1], end[1]]
+            edge_key = (tuple(xs), tuple(ys))
+            if edge_key not in visited:
+                visited.add(edge_key)
+            else:
+                continue
+            plt.plot(xs, ys, "b")
 
-    plt.gca().set_xlim([-1, 11])
-    plt.gca().set_ylim([-1, 11])
-    plt.show()
+        plt.gca().set_xlim([-1, 11])
+        plt.gca().set_ylim([-1, 11])
+        plt.show()
 
-    fig, ax = plt.subplots()
-    for p, r in point_radii_pair.items():
-        circ = plt.Circle(p, r, color='b', fill=True)
-        ax.add_patch(circ)
+        fig, ax = plt.subplots()
+        for p, r in point_radii_pair.items():
+            circ = plt.Circle(p, r, color='b', fill=True)
+            ax.add_patch(circ)
 
-    plt.gca().set_xlim([-1, 11])
-    plt.gca().set_ylim([-1, 11])
-    plt.show()
+        plt.gca().set_xlim([-1, 11])
+        plt.gca().set_ylim([-1, 11])
+        plt.show()
+
+    elif args.shape_matching:
+        match_shape(query_image=input_file)

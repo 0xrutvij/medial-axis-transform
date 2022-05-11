@@ -1,10 +1,10 @@
 import json
-import multiprocessing
 from timeit import default_timer as timer
 from scipy.optimize import linear_sum_assignment
 from modified_skeleton_algorithm import MedialAxisTransformer
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 from pathlib import Path
 from osb import optimal_subsequence_bijection
 from utils import (
@@ -215,28 +215,27 @@ def select_ref_images():
             plt.show()
 
 
-if __name__ == "__main__":
-    query_image = "shapes/horse-19.txt"
+def match_shape(query_image="shapes/camel/camel_2.txt"):
     query_pts = extract_points_from_file(query_image)
     query_skeleton = MedialAxisTransformer.from_boundary_points(query_pts)
 
     match_score = {}
 
-    with multiprocessing.Pool(multiprocessing.cpu_count()) as worker_pool:
+    ref_files = [file for file in Path(
+        "reference_shapes/all_shapes").glob("*.txt")]
+    ref_pts = list(map(extract_points_from_file, ref_files))
+    ref_skeletons = list(map(
+        MedialAxisTransformer.from_boundary_points, ref_pts))
+    fargs = list(zip(ref_skeletons, [file.stem for file in ref_files]))
 
-        ref_files = [file for file in Path("reference_images").glob("*.txt")]
-        ref_pts = list(map(extract_points_from_file, ref_files))
-        ref_skeletons = list(map(
-            MedialAxisTransformer.from_boundary_points, ref_pts))
-        fargs = zip(ref_skeletons, [file.stem for file in ref_files])
-
-        comparisons = map(lambda args: compare_skeletons(
-            query_skeleton, *args), fargs)
-        for skel, skel_name in fargs:
-            # print(skel_name)
+    for skel, skel_name in tqdm(fargs):
+        try:
             img_class, score = compare_skeletons(
                 query_skeleton, skel, skel_name)
-            match_score[img_class] = score
+        except Exception as e:
+            e
+            continue
+        match_score[img_class] = score
 
     imclasses = list(match_score.keys())
     scores = np.array(list(match_score.values()))
@@ -254,4 +253,8 @@ if __name__ == "__main__":
 
     print(json.dumps(top_5_matches, indent="\t"))
 
+
+if __name__ == "__main__":
+
     # main2(if1, if2)
+    match_shape()
